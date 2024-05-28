@@ -8,11 +8,13 @@ flax
 optax
 git+https://github.com/google/flaxformer
 git+https://github.com/akolesnikoff/panopticapi.git@mute
+keras<3.0.0
 overrides
 protobuf
 sentencepiece
 tensorflow-cpu
 tfds-nightly
+tensorflow-addons
 tensorflow-text
 tensorflow-gan
 pycocoevalcap

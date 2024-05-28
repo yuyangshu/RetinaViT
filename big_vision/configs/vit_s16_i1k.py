@@ -71,7 +71,7 @@ def get_config():
       variant='S/16',
       rep_size=True,
       pool_type='gap',
-      posemb='sincos2d',
+      posemb='conv_sincos',
   )
 
   # Optimizer section

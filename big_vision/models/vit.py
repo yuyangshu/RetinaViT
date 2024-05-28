@@ -17,6 +17,7 @@
 However, the names of modules are made to match the old ones for easy loading.
 """
 
+from math import ceil, log
 from typing import Optional, Sequence, Union
 
 from absl import logging
@@ -26,6 +27,8 @@ import flax
 import flax.linen as nn
 import flax.training.checkpoints
 import jax
+import jax.image as jmg
+import jax.lax as lax
 import jax.numpy as jnp
 import numpy as np
 import scipy.ndimage
@@ -43,13 +46,39 @@ def posemb_sincos_2d(h, w, width, temperature=10_000., dtype=jnp.float32):
   pe = jnp.concatenate([jnp.sin(x), jnp.cos(x), jnp.sin(y), jnp.cos(y)], axis=1)
   return jnp.asarray(pe, dtype)[None, :, :]
 
+def posemb_conv(input_size, patch_size, width, scales, temperature=10_000., dtype=jnp.float32):
+  h = w = input_size // patch_size
+  base_emb = posemb_sincos_2d(h, w, width, temperature, dtype)
+  emb_2d = jnp.reshape(base_emb, [h, w, -1])
 
-def get_posemb(self, typ, seqshape, width, name, dtype=jnp.float32):
+  # fill the embeddings into an image sized matrix
+  f = lambda i, j, k: emb_2d[i // patch_size, j // patch_size, k]
+  img = jnp.vectorize(f)(*jnp.indices((input_size, input_size, width)))
+
+  # calculate weighted embedding for each scale
+  kernel_size, stride = 16, 8
+  mean_embs = []
+  for scale in scales + [input_size]:
+    h = scale // kernel_size
+    field_size = input_size // h
+    step = field_size * stride // kernel_size
+
+    for i in range(0, input_size - field_size + 1, step):
+      for j in range(0, input_size - field_size + 1, step):
+        patch = lax.dynamic_slice(img, (i, j, 0), (field_size, field_size, width))
+        mean_embs.append(patch.mean(axis=(0, 1)))
+
+  return jnp.asarray(mean_embs)
+
+
+def get_posemb(self, typ, seqshape, width, name, dtype=jnp.float32, scales=None):
   if typ == "learn":
     return self.param(name, nn.initializers.normal(stddev=1/np.sqrt(width)),
                       (1, np.prod(seqshape), width), dtype)
   elif typ == "sincos2d":
     return posemb_sincos_2d(*seqshape, width, dtype=dtype)
+  elif typ == "conv_sincos":
+    return posemb_conv(seqshape, self.patch_size[0], width, scales, dtype=dtype)
   else:
     raise ValueError(f"Unknown posemb type: {typ}")
 
@@ -203,26 +232,30 @@ class _Model(nn.Module):
   @nn.compact
   def __call__(self, image, *, train=False):
     out = {}
+    n, p, _, c = image.shape
 
-    image = jnp.asarray(image, self.dtype_mm)
+    # get images of all scales
+    initial, terminal = ceil(log(self.patch_size[0], 2)), ceil(log(p, 2))
+    scales = map(lambda x : 2 ** x, range(initial, terminal))
+    scales = [x for x in scales]
+    images = [jmg.resize(image, (n, s, s, c), "bilinear") for s in scales] + [image]
 
     # Patch extraction
-    x = out["stem"] = nn.Conv(
-        self.width, self.patch_size, strides=self.patch_size,
-        padding="VALID", name="embedding", dtype=self.dtype_mm)(image)
+    kernel_size, stride = 16, 8
+    x = out["stem"] = [nn.Conv(
+      self.width, (kernel_size, kernel_size), strides=stride,
+      padding="VALID", name=f"embedding_{image.shape[1]}")(image) for image in images]
 
-    n, h, w, c = x.shape
-    x = jnp.reshape(x, [n, h * w, c])
+    x = [jnp.reshape(p, (n, p.shape[1] ** 2, self.width)) for p in x]
+    x = jnp.concatenate(x, axis=1)
 
     # Add posemb before adding extra token.
-    x = out["with_posemb"] = x + get_posemb(
-        self, self.posemb, (h, w), c, "pos_embedding", x.dtype)
+    x = out["with_posemb"] = x + get_posemb(self, self.posemb, p, self.width, "with_posemb", x.dtype, scales=scales)
 
     if self.pool_type == "tok":
-      cls = self.param("cls", nn.initializers.zeros, (1, 1, c), x.dtype)
+      cls = self.param("cls", nn.initializers.zeros, (1, 1, self.width), x.dtype)
       x = jnp.concatenate([jnp.tile(cls, [n, 1, 1]), x], axis=1)
 
-    n, l, c = x.shape  # pylint: disable=unused-variable
     x = nn.Dropout(rate=self.dropout)(x, not train)
 
     x, out["encoder"] = Encoder(
@@ -252,23 +285,18 @@ class _Model(nn.Module):
     else:
       raise ValueError(f"Unknown pool type: '{self.pool_type}'")
 
-    x_2d = jnp.reshape(encoded, [n, h, w, -1])
-
     if self.rep_size:
       rep_size = self.width if self.rep_size is True else self.rep_size
       hid = nn.Dense(rep_size, name="pre_logits")
       # NOTE: In the past we did not include tanh in pre_logits.
       # For few-shot, it should not matter much, as it whitens anyways.
-      x_2d = nn.tanh(hid(x_2d))
       x = nn.tanh(hid(x))
 
-    out["pre_logits_2d"] = x_2d
     out["pre_logits"] = x
 
     if self.num_classes:
       kw = {"kernel_init": nn.initializers.zeros} if self.head_zeroinit else {}
       head = nn.Dense(self.num_classes, name="head", **kw)
-      x_2d = out["logits_2d"] = head(x_2d)
       x = out["logits"] = head(x)
 
     return x, out

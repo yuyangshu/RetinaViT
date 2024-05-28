@@ -1,3 +1,11 @@
+# Retina ViT
+
+This repository is the implementation of this paper http://arxiv.org/abs/2403.13677, and is a fork of https://github.com/google-research/big_vision.
+
+The fork is performed on 2023-03-21.
+
+original readme:
+
 # Big Vision
 
 This codebase is designed for training large-scale vision models using
