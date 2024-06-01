@@ -1,0 +1,104 @@
+# https://opus.nci.org.au/display/Help/Gadi+User+Guide
+
+# submit a job
+[ys4871@gadi-login-05 RetinaViT]$ qsub bv_volta.sh
+116869028.gadi-pbs
+
+# delete a job
+[ys4871@gadi-login-05 RetinaViT]$ qdel 116987989.gadi-pbs
+
+# monitor job status
+[ys4871@gadi-login-05 RetinaViT]$ qstat -swx 116865189.gadi-pbs
+
+gadi-pbs:
+                                                                                                   Req'd  Req'd   Elap
+Job ID                         Username        Queue           Jobname         SessID   NDS  TSK   Memory Time  S Time
+------------------------------ --------------- --------------- --------------- -------- ---- ----- ------ ----- - -----
+116865189.gadi-pbs             ys4871          dgxa100-exec    bv_train             --     1    16  256gb 00:30 Q  --
+   Not Running: Not enough free nodes available
+
+# monitor resource usage
+[ys4871@gadi-login-05 RetinaViT]$ nqstat_anu 116867017.gadi-pbs
+
+# check job stdout
+[ys4871@gadi-login-03 ~]$ qcat 116870455.gadi-pbs
+Loading python3/3.10.4
+  Loading requirement: intel-mkl/2021.4.0
+2024-05-31 01:58:05.556102: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2024-05-31 01:58:07.323693: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:9261] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2024-05-31 01:58:07.323815: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:607] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2024-05-31 01:58:07.849726: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1515] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2024-05-31 01:58:08.549838: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2024-05-31 01:58:13.269100: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+I0531 01:58:29.305720 22891222026048 xla_bridge.py:884] Unable to initialize backend 'rocm': module 'jaxlib.xla_extension' has no attribute 'GpuAllocatorConfig'
+I0531 01:58:29.330716 22891222026048 xla_bridge.py:884] Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+I0531 01:58:29.349024 22891222026048 train.py:93] Hello from process 0 holding 4/4 devices and writing to workdir 05-31_0158.
+
+# disk space usage of home directory
+[ys4871@gadi-login-01 RetinaViT]$ quota -s
+Disk quotas for user ys4871 (uid 21421):
+     Filesystem   space   quota   limit   grace   files   quota   limit   grace
+gadi-home-fas.gadi.nci.org.au:/home
+                  3904M  10240M  10240M           35521   4295m   4295m
+
+# project disk usage (gdata usage)
+[ys4871@gadi-login-01 RetinaViT]$ lquota
+--------------------------------------------------------------------------
+           fs       Usage      Quota      Limit   iUsage   iQuota   iLimit
+--------------------------------------------------------------------------
+  ey69 scratch 181.12 GiB   1.00 TiB   1.05 TiB   171301   202000   212100
+  ey69   gdata   3.90 TiB  10.00 TiB  10.50 TiB   997887  1018000  1068900
+
+# project resource usage
+nci_account -P ey69 -v
+
+
+The job's state:
+    B  Array job has at least one subjob running
+    E  Job is exiting after having run
+    F  Job is finished
+    H  Job is held
+    M  Job was moved to another server
+    Q  Job is queued
+    R  Job is running
+    S  Job is suspended
+    T  Job is being moved to new location
+    U  Cycle-harvesting job is suspended due to keyboard activity
+    W  Job is waiting for its submitter- assigned start time to be reached
+    X  Subjob has completed execution or has been deleted
+
+
+
+# CPU memory footprint, single `gpuvolta` node
+# before/during training start
+[ys4871@gadi-login-05 original]$ nqstat_anu 117007499.gadi-pbs
+                                %CPU  WallTime  Time Lim     RSS    mem memlim cpus
+117007499 R ys4871 ey69 original   8  00:18:23  02:00:00  133GB  133GB  384GB    48
+# during training, before/during 1st checkpoint
+[ys4871@gadi-login-05 original]$ nqstat_anu 117007499.gadi-pbs
+                                %CPU  WallTime  Time Lim     RSS    mem memlim cpus
+117007499 R ys4871 ey69 original  16  00:24:24  02:00:00  243GB  243GB  384GB    48
+# after 1st in-training evaluation (at 2500 steps)
+[ys4871@gadi-login-05 original]$ nqstat_anu 117007499.gadi-pbs
+                                %CPU  WallTime  Time Lim     RSS    mem memlim cpus
+# about equilibrium (at 8100 steps, i.e. 3 checkpoint saves)
+[ys4871@gadi-login-05 original]$ nqstat_anu 117007499.gadi-pbs
+                                %CPU  WallTime  Time Lim     RSS    mem memlim cpus
+117007499 R ys4871 ey69 original  36  01:55:02  02:00:00  306GB  306GB  384GB    48
+
+# at job finish
+======================================================================================
+                  Resource Usage on 2024-06-03 12:00:32:
+   Job Id:             117007741.gadi-pbs
+   Project:            ey69
+   Exit Status:        0
+   Service Units:      3381.72
+   NCPUs Requested:    48                     NCPUs Used: 48
+                                           CPU Time Used: 442:49:55
+   Memory Requested:   384.0GB               Memory Used: 326.71GB
+   NGPUs Requested:    4                 GPU Utilisation: 179%
+                                         GPU Memory Used: 98.95GB
+   Walltime requested: 32:00:00            Walltime Used: 23:29:03
+   JobFS requested:    128.0GB                JobFS used: 228.1KB
+======================================================================================
