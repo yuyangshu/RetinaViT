@@ -61,7 +61,7 @@ jax.config.parse_flags_with_absl()
 # a device is transferred implicitly. This often catches subtle bugs that
 # cause slowdowns and memory fragmentation. Explicit transfers are done
 # with jax.device_put and jax.device_get.
-jax.config.update("jax_transfer_guard", "disallow")
+jax.config.update("jax_transfer_guard", "allow")
 # Fixes design flaw in jax.random that may cause unnecessary d2d comms.
 jax.config.update("jax_threefry_partitionable", True)
 
@@ -486,6 +486,7 @@ def main(argv):
       u.save_checkpoint_ts(ckpt_mngr, ckpt, save_ckpt_path, step, keep)
       u.chrono.resume()
 
+    accumulated_attn = np.empty((0, 281))
     for (name, evaluator, log_steps, prefix) in evaluators():
       if u.itstime(step, log_steps, total_steps, first=False, last=True):
         u.chrono.pause(wait_for=train_state)
@@ -495,6 +496,8 @@ def main(argv):
           with mesh, nn.logical_axis_rules(sharding_rules):
             for key, value in evaluator.run(train_state):
               mw.measure(f"{prefix}{key}", jax.device_get(value))
+              if (key == "attn_distribution"):
+                accumulated_attn = np.concatenate((accumulated_attn, value), axis=0)
         u.chrono.resume()
     mw.step_end()
 
@@ -502,6 +505,9 @@ def main(argv):
   # TODO: can we also do this when dying of an exception like OOM?
   if jax.process_index() == 0 and prof is not None:
     u.startstop_prof(prof)
+
+  # dump attention weights
+  np.save(os.path.join(workdir, "attention_distribution"), accumulated_attn)
 
   # Last note needs to happen before the pool's closed =)
   write_note(f"Done!\n{u.chrono.note}")

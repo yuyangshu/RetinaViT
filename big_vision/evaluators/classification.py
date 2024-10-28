@@ -21,6 +21,7 @@ from big_vision.evaluators import common
 import big_vision.utils as u
 import jax
 import jax.numpy as jnp
+from jax.experimental import multihost_utils
 
 
 # Temporary global flag to facilitate backwards compatability. Will be removed
@@ -35,7 +36,7 @@ def get_eval_fn(predict_fn, loss_name):
   """Produces eval function, also applies pmap."""
   @jax.jit
   def _eval_fn(train_state, batch, labels, mask):
-    logits, *_ = predict_fn(train_state, batch)
+    logits, out = predict_fn(train_state, batch)
 
     # Ignore the entries with all zero labels for evaluation.
     mask *= labels.max(axis=1)
@@ -50,7 +51,7 @@ def get_eval_fn(predict_fn, loss_name):
         labels, top1_idx[:, None], axis=1)[:, 0]
     ncorrect = jnp.sum(top1_correct * mask)
     nseen = jnp.sum(mask)
-    return ncorrect, loss, nseen
+    return ncorrect, loss, nseen, out["attn_distribution"]
   return _eval_fn
 
 
@@ -64,13 +65,21 @@ class Evaluator:
 
   def run(self, train_state):
     """Computes all metrics."""
-    ncorrect, loss, nseen = 0, 0, 0
+    # (224/16)^2 + (128/16)^2 + (64/16)^2 + (32/16)^2 + (16/16)^2 = 281
+    ncorrect, loss, nseen, attn_distribution = 0, 0, 0, jnp.empty((0, 281))
     for _, batch in zip(range(self.steps), self.get_data_iter()):
       labels, mask = batch.pop(self.label_key), batch.pop('_mask')
-      batch_ncorrect, batch_losses, batch_nseen = jax.device_get(
-          self.eval_fn(train_state, batch, labels, mask))
+      batch_ncorrect, batch_losses, batch_nseen, batch_attn_distribution = \
+          multihost_utils.process_allgather(self.eval_fn(train_state, batch, labels, mask))
       ncorrect += batch_ncorrect
       loss += batch_losses
       nseen += batch_nseen
+      attn_distribution = jnp.concatenate((attn_distribution, batch_attn_distribution), axis=0)
+
+    # trim the values from empty input, direct output is ceil()ed to multiples of batch size
+    attn_distribution = attn_distribution[0:int(nseen):]
+
     yield ('prec@1', ncorrect / nseen)
     yield ('loss', loss / nseen)
+    yield ('sample count', nseen)
+    yield ('attn_distribution', attn_distribution)

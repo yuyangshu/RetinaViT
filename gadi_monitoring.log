@@ -35,14 +35,14 @@ I0531 01:58:29.305720 22891222026048 xla_bridge.py:884] Unable to initialize bac
 I0531 01:58:29.330716 22891222026048 xla_bridge.py:884] Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
 I0531 01:58:29.349024 22891222026048 train.py:93] Hello from process 0 holding 4/4 devices and writing to workdir 05-31_0158.
 
-# disk space usage of home directory
+# disk space usage of home directory (personal)
 [ys4871@gadi-login-01 RetinaViT]$ quota -s
 Disk quotas for user ys4871 (uid 21421):
      Filesystem   space   quota   limit   grace   files   quota   limit   grace
 gadi-home-fas.gadi.nci.org.au:/home
                   3904M  10240M  10240M           35521   4295m   4295m
 
-# project disk usage (gdata usage)
+# project shared storage usage (gdata, scratch)
 [ys4871@gadi-login-01 RetinaViT]$ lquota
 --------------------------------------------------------------------------
            fs       Usage      Quota      Limit   iUsage   iQuota   iLimit
@@ -50,8 +50,55 @@ gadi-home-fas.gadi.nci.org.au:/home
   ey69 scratch 181.12 GiB   1.00 TiB   1.05 TiB   171301   202000   212100
   ey69   gdata   3.90 TiB  10.00 TiB  10.50 TiB   997887  1018000  1068900
 
-# project resource usage
-nci_account -P ey69 -v
+# project compute resource usage
+[ys4871@gadi-login-04 RetinaViT]$ nci_account -P ey69 -v
+
+Usage Report: Project=ey69 Period=2024.q4
+=============================================================
+    Grant:   750.00 KSU
+     Used:   709.58 KSU
+ Reserved:    16.42 KSU
+    Avail:    24.00 KSU
+
+Stakeholder                   Grant         Used        Avail
+-------------------------------------------------------------
+Contract-YuleiS          750.00 KSU   726.00 KSU    24.00 KSU
+-------------------------------------------------------------
+User                                        Used     Reserved
+-------------------------------------------------------------
+cz0671                                 170.40 KSU     0.00 SU
+em0621                                 288.68 SU      0.00 SU
+gs2088                                   0.00 SU      0.00 SU
+hw0985                                  81.98 KSU     0.00 SU
+jh3193                                 212.72 SU      0.00 SU
+rt0491                                  29.03 KSU     2.02 KSU
+ry9746                                   8.82 KSU     0.00 SU
+xh0886                                 902.51 SU      0.00 SU
+xx0229                                 101.89 KSU     0.00 SU
+xz4320                                   6.92 KSU     0.00 SU
+yd0250                                 115.43 KSU     6.91 KSU
+ys1857                                   6.40 KSU     1.73 KSU
+ys4871                                  41.76 KSU     5.76 KSU
+yx4133                                 161.88 KSU     0.00 SU
+zz8347                                  77.53 SU      0.00 SU
+-------------------------------------------------------------
+
+Storage Usage Report: Project=ey69
+=============================================================
+Filesystem        Used     iUsed    Allocation    iAllocation
+scratch2     243.72 GiB  137.15 K     1.00 TiB       202.00 K
+
+Stakeholder                         Allocation    iAllocation
+-------------------------------------------------------------
+                                      1.00 TiB       202.00 K
+-------------------------------------------------------------
+
+gdata6         4.79 TiB  976.60 K    10.00 TiB         1.02 M
+
+Stakeholder                         Allocation    iAllocation
+-------------------------------------------------------------
+Contract-YuleiS                      10.00 TiB         1.02 M
+-------------------------------------------------------------
 
 # file system usage by user
 nci-files-report -p ey69 -f gdata

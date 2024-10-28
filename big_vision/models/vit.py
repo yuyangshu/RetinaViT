@@ -23,6 +23,7 @@ from typing import Optional, Sequence, Union
 from absl import logging
 from big_vision import utils
 from big_vision.models import common
+from big_vision.models import override
 import flax
 import flax.linen as nn
 import flax.training.checkpoints
@@ -56,7 +57,7 @@ def posemb_conv(input_size, patch_size, width, scales, temperature=10_000., dtyp
   img = jnp.vectorize(f)(*jnp.indices((input_size, input_size, width)))
 
   # calculate weighted embedding for each scale
-  kernel_size, stride = 16, 8
+  kernel_size, stride = 16, 16
   mean_embs = []
   for scale in scales + [input_size]:
     h = scale // kernel_size
@@ -117,7 +118,7 @@ class Encoder1DBlock(nn.Module):
     out = {}
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     y = nn.LayerNorm()(x)
-    y = out["sa"] = nn.MultiHeadDotProductAttention(
+    y, attn_distribution = out["sa"] = override.MultiHeadDotProductAttention(
         num_heads=self.num_heads,
         kernel_init=nn.initializers.xavier_uniform(),
         deterministic=deterministic,
@@ -126,6 +127,7 @@ class Encoder1DBlock(nn.Module):
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
     x = out["+sa"] = x + y
+    out["attn_distribution"] = attn_distribution
 
     y = nn.LayerNorm()(x)
     y = out["mlp"] = MlpBlock(
@@ -182,6 +184,7 @@ class Encoder(nn.Module):
             mlp_dim=self.mlp_dim, num_heads=self.num_heads,
             dropout=self.dropout)
         x, out[f"block{lyr:02d}"] = block_cur(x, deterministic)
+      out["attn_distribution"] = out["block00"]["attn_distribution"] # 1st layer attention probe
       out["pre_ln"] = x  # Alias for last block, but without the number in it.
 
     return nn.LayerNorm(name="encoder_norm")(x), out
@@ -241,7 +244,7 @@ class _Model(nn.Module):
     images = [jmg.resize(image, (n, s, s, c), "bilinear") for s in scales] + [image]
 
     # Patch extraction
-    kernel_size, stride = 16, 8
+    kernel_size, stride = 16, 16
     x = out["stem"] = [nn.Conv(
       self.width, (kernel_size, kernel_size), strides=stride,
       padding="VALID", name=f"embedding_{image.shape[1]}")(image) for image in images]
@@ -269,6 +272,7 @@ class _Model(nn.Module):
         name="Transformer")(
             x, deterministic=not train)
     encoded = out["encoded"] = x
+    out["attn_distribution"] = out["encoder"]["attn_distribution"]
 
     if self.pool_type == "map":
       x = out["head_input"] = MAPHead(
