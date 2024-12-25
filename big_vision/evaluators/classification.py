@@ -51,7 +51,7 @@ def get_eval_fn(predict_fn, loss_name):
         labels, top1_idx[:, None], axis=1)[:, 0]
     ncorrect = jnp.sum(top1_correct * mask)
     nseen = jnp.sum(mask)
-    return ncorrect, loss, nseen, out["attn_distribution"]
+    return ncorrect, loss, nseen, out["attn_distribution"], out["attn"], out["before_mlp"], out["query"], out["key"], out["value"]
   return _eval_fn
 
 
@@ -65,21 +65,39 @@ class Evaluator:
 
   def run(self, train_state):
     """Computes all metrics."""
+    ncorrect, loss, nseen = 0, 0, 0
     # (224/16)^2 + (128/16)^2 + (64/16)^2 + (32/16)^2 + (16/16)^2 = 281
-    ncorrect, loss, nseen, attn_distribution = 0, 0, 0, jnp.empty((0, 281))
+    attn_distribution, attn, before_mlp, query, key, value = jnp.empty((0, 281)), jnp.empty((0, 281)), \
+      jnp.empty((0, 281)), jnp.empty((0, 281)), jnp.empty((0, 281)), jnp.empty((0, 281))
     for _, batch in zip(range(self.steps), self.get_data_iter()):
       labels, mask = batch.pop(self.label_key), batch.pop('_mask')
-      batch_ncorrect, batch_losses, batch_nseen, batch_attn_distribution = \
+      batch_ncorrect, batch_losses, batch_nseen, batch_attn_distribution, batch_attn, batch_before_mlp, batch_q, batch_k, batch_v = \
           multihost_utils.process_allgather(self.eval_fn(train_state, batch, labels, mask))
       ncorrect += batch_ncorrect
       loss += batch_losses
       nseen += batch_nseen
+
       attn_distribution = jnp.concatenate((attn_distribution, batch_attn_distribution), axis=0)
+      attn = jnp.concatenate((attn, batch_attn), axis=0)
+      before_mlp = jnp.concatenate((before_mlp, batch_before_mlp), axis=0)
+      query = jnp.concatenate((query, batch_q), axis=0)
+      key = jnp.concatenate((key, batch_k), axis=0)
+      value = jnp.concatenate((value, batch_v), axis=0)
 
     # trim the values from empty input, direct output is ceil()ed to multiples of batch size
     attn_distribution = attn_distribution[0:int(nseen):]
+    attn = attn[0:int(nseen):]
+    before_mlp = before_mlp[0:int(nseen):]
+    query = query[0:int(nseen):]
+    key = key[0:int(nseen):]
+    value = value[0:int(nseen):]
 
     yield ('prec@1', ncorrect / nseen)
     yield ('loss', loss / nseen)
     yield ('sample count', nseen)
     yield ('attn_distribution', attn_distribution)
+    yield ('attn', attn)
+    yield ('before_mlp', before_mlp)
+    yield ('query', query)
+    yield ('key', key)
+    yield ('value', value)

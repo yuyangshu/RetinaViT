@@ -42,6 +42,14 @@ Disk quotas for user ys4871 (uid 21421):
 gadi-home-fas.gadi.nci.org.au:/home
                   3904M  10240M  10240M           35521   4295m   4295m
 
+# check disk space usage of subdirectories from within a directory
+[ys4871@gadi-login-09 128921646.gadi-pbs]$ du -sh ./*
+156M	./attn_distribution.npy
+156M	./attn.npy
+156M	./key.npy
+156M	./query.npy
+156M	./value.npy
+
 # project shared storage usage (gdata, scratch)
 [ys4871@gadi-login-01 RetinaViT]$ lquota
 --------------------------------------------------------------------------
@@ -51,49 +59,52 @@ gadi-home-fas.gadi.nci.org.au:/home
   ey69   gdata   3.90 TiB  10.00 TiB  10.50 TiB   997887  1018000  1068900
 
 # project compute resource usage
-[ys4871@gadi-login-04 RetinaViT]$ nci_account -P ey69 -v
+[ys4871@gadi-login-01 RetinaViT]$ nci_account -P ey69 -v
 
 Usage Report: Project=ey69 Period=2024.q4
 =============================================================
-    Grant:   750.00 KSU
-     Used:   709.58 KSU
- Reserved:    16.42 KSU
-    Avail:    24.00 KSU
+    Grant:     1.75 MSU
+     Used:     1.12 MSU
+ Reserved:    12.99 KSU
+    Avail:   612.04 KSU
 
 Stakeholder                   Grant         Used        Avail
 -------------------------------------------------------------
-Contract-YuleiS          750.00 KSU   726.00 KSU    24.00 KSU
+Contract-YuleiS            1.75 MSU     1.14 MSU   612.04 KSU
 -------------------------------------------------------------
 User                                        Used     Reserved
 -------------------------------------------------------------
 cz0671                                 170.40 KSU     0.00 SU
 em0621                                 288.68 SU      0.00 SU
 gs2088                                   0.00 SU      0.00 SU
-hw0985                                  81.98 KSU     0.00 SU
+hl6114                                   2.43 KSU     0.00 SU
+hw0985                                 123.74 KSU     0.00 SU
 jh3193                                 212.72 SU      0.00 SU
-rt0491                                  29.03 KSU     2.02 KSU
+jz9348                                 539.81 SU    433.44 SU
+rt0491                                  47.97 KSU     0.00 SU
 ry9746                                   8.82 KSU     0.00 SU
-xh0886                                 902.51 SU      0.00 SU
-xx0229                                 101.89 KSU     0.00 SU
-xz4320                                   6.92 KSU     0.00 SU
-yd0250                                 115.43 KSU     6.91 KSU
-ys1857                                   6.40 KSU     1.73 KSU
-ys4871                                  41.76 KSU     5.76 KSU
-yx4133                                 161.88 KSU     0.00 SU
-zz8347                                  77.53 SU      0.00 SU
+xc8206                                   3.62 KSU   215.46 SU
+xh0886                                  13.89 KSU     0.00 SU
+xx0229                                 113.99 KSU     0.00 SU
+xz4320                                   7.30 KSU   164.16 SU
+yd0250                                 127.39 KSU     0.00 SU
+ys1857                                  53.44 KSU     0.00 SU
+ys4871                                 282.53 KSU    12.18 KSU
+yx4133                                 168.61 KSU     0.00 SU
+zz8347                                  12.79 KSU     0.00 SU
 -------------------------------------------------------------
 
 Storage Usage Report: Project=ey69
 =============================================================
 Filesystem        Used     iUsed    Allocation    iAllocation
-scratch2     243.72 GiB  137.15 K     1.00 TiB       202.00 K
+scratch2     132.88 GiB  160.51 K     1.00 TiB       202.00 K
 
 Stakeholder                         Allocation    iAllocation
 -------------------------------------------------------------
                                       1.00 TiB       202.00 K
 -------------------------------------------------------------
 
-gdata6         4.79 TiB  976.60 K    10.00 TiB         1.02 M
+gdata6         3.48 TiB    1.00 M    10.00 TiB         1.02 M
 
 Stakeholder                         Allocation    iAllocation
 -------------------------------------------------------------

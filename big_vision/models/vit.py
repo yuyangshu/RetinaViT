@@ -118,16 +118,18 @@ class Encoder1DBlock(nn.Module):
     out = {}
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     y = nn.LayerNorm()(x)
-    y, attn_distribution = out["sa"] = override.MultiHeadDotProductAttention(
+    y, out["attn_distribution"], out["attn"], out["query"], out["key"], out["value"] = override.MultiHeadDotProductAttention(
         num_heads=self.num_heads,
         kernel_init=nn.initializers.xavier_uniform(),
         deterministic=deterministic,
         dtype=self.dtype_mm,
     )(y, y)
+    out["sa"] = y
+
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
     x = out["+sa"] = x + y
-    out["attn_distribution"] = attn_distribution
+    out["before_mlp_mag"] = jnp.average(jnp.abs(x), axis=2) # take abs()
 
     y = nn.LayerNorm()(x)
     y = out["mlp"] = MlpBlock(
@@ -184,7 +186,12 @@ class Encoder(nn.Module):
             mlp_dim=self.mlp_dim, num_heads=self.num_heads,
             dropout=self.dropout)
         x, out[f"block{lyr:02d}"] = block_cur(x, deterministic)
-      out["attn_distribution"] = out["block00"]["attn_distribution"] # 1st layer attention probe
+      out["attn_distribution"] = out["block00"]["attn_distribution"] # 1st layer attention probes
+      out["attn"] = out["block00"]["attn"] # 1st layer attention results
+      out["before_mlp"] = out["block00"]["before_mlp_mag"] # 1st layer attention results + embeddings from skip connections
+      out["query"] = out["block00"]["query"] # 1st layer attention probes
+      out["key"] = out["block00"]["key"] # 1st layer attention probes
+      out["value"] = out["block00"]["value"] # 1st layer attention probes
       out["pre_ln"] = x  # Alias for last block, but without the number in it.
 
     return nn.LayerNorm(name="encoder_norm")(x), out
@@ -273,6 +280,11 @@ class _Model(nn.Module):
             x, deterministic=not train)
     encoded = out["encoded"] = x
     out["attn_distribution"] = out["encoder"]["attn_distribution"]
+    out["attn"] = out["encoder"]["attn"]
+    out["before_mlp"] = out["encoder"]["before_mlp"]
+    out["query"] = out["encoder"]["query"]
+    out["key"] = out["encoder"]["key"]
+    out["value"] = out["encoder"]["value"]
 
     if self.pool_type == "map":
       x = out["head_input"] = MAPHead(
