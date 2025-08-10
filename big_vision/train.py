@@ -487,8 +487,8 @@ def main(argv):
       u.chrono.resume()
 
     accumulated = {}
-    for key in ["attn_distribution", "attn", "before_mlp", "query", "key", "value"]:
-      accumulated[key] = jnp.empty((0, 281))
+    for key in ["attn_weight_avg", "attn_mag", "before_mlp"]:
+      accumulated[key] = jnp.empty((0, 12, 281))
     for (name, evaluator, log_steps, prefix) in evaluators():
       if u.itstime(step, log_steps, total_steps, first=False, last=True):
         u.chrono.pause(wait_for=train_state)
@@ -498,7 +498,7 @@ def main(argv):
           with mesh, nn.logical_axis_rules(sharding_rules):
             for key, value in evaluator.run(train_state):
               mw.measure(f"{prefix}{key}", jax.device_get(value))
-              if (key in ["attn_distribution", "attn", "before_mlp", "query", "key", "value"]):
+              if (key in ["attn_weight_avg", "attn_mag", "before_mlp"]):
                 accumulated[key] = np.concatenate((accumulated[key], value), axis=0)
         u.chrono.resume()
     mw.step_end()
@@ -509,8 +509,9 @@ def main(argv):
     u.startstop_prof(prof)
 
   # dump attention weights
-  for key in ["attn_distribution", "attn", "before_mlp", "query", "key", "value"]:
-    np.save(os.path.join(workdir, key), accumulated[key])
+  dump_path = os.environ["DUMP_PATH"]
+  for key in ["attn_weight_avg", "attn_mag", "before_mlp"]:
+    np.save(os.path.join(dump_path, key), accumulated[key])
 
   # Last note needs to happen before the pool's closed =)
   write_note(f"Done!\n{u.chrono.note}")

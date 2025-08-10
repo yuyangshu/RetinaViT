@@ -187,17 +187,18 @@ def dot_product_attention(query: Array,
       query, key, bias, mask, broadcast_dropout, dropout_rng, dropout_rate,
       deterministic, dtype, precision)
 
-  # attention distribution - v1 softmax
-  # attn_distribution = jax.nn.softmax(jnp.einsum('...ijk->...k', attn_weights))
+  # average attention weights - v1 softmax
+  # attn_weight_avg = jax.nn.softmax(jnp.einsum('...ijk->...k', attn_weights))
 
-  # attention distribution - v2 average
-  # since the weights are softmax results, they are all non negative in value, so no need to abs()
-  attn_distribution = jnp.einsum('...ijk->...k', attn_weights) / (value.shape[-3] * value.shape[-2])
+  # average attention weights - v2 average
+  # since the weights are already softmax results thus all non negative in value, there's no need to abs()
+  attn_weight_avg = jnp.einsum('...ijk->...k', attn_weights) / (value.shape[-3] * value.shape[-2])
 
   # return weighted sum over values for each query position
   attention_score = jnp.einsum('...hqk,...khd->...qhd', attn_weights, value, precision=precision)
 
-  return attention_score, attn_distribution, magnitude(attention_score), magnitude(query), magnitude(key), magnitude(value)
+  # return attention_score, attn_weight_avg, magnitude(attention_score), magnitude(query), magnitude(key), magnitude(value)
+  return attention_score, attn_weight_avg, magnitude(attention_score)
 
 
 
@@ -328,7 +329,7 @@ class MultiHeadDotProductAttention(Module):
       m_deterministic = True
 
     # apply attention
-    x, attn_distribution, attn, query, key, value = self.attention_fn(
+    x, attn_weight_avg, attn_mag = self.attention_fn(
         query,
         key,
         value,
@@ -349,7 +350,7 @@ class MultiHeadDotProductAttention(Module):
                        param_dtype=self.param_dtype,
                        precision=self.precision,
                        name='out')(x)
-    return out, attn_distribution, attn, query, key, value
+    return out, attn_weight_avg, attn_mag
 
 
 class SelfAttention(MultiHeadDotProductAttention):

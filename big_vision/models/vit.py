@@ -23,7 +23,7 @@ from typing import Optional, Sequence, Union
 from absl import logging
 from big_vision import utils
 from big_vision.models import common
-from big_vision.models import override
+from big_vision.models import attn_override
 import flax
 import flax.linen as nn
 import flax.training.checkpoints
@@ -118,7 +118,7 @@ class Encoder1DBlock(nn.Module):
     out = {}
     x = nn.with_logical_constraint(x, ("act_batch", "act_len", "act_emb"))
     y = nn.LayerNorm()(x)
-    y, out["attn_distribution"], out["attn"], out["query"], out["key"], out["value"] = override.MultiHeadDotProductAttention(
+    y, out["attn_weight_avg"], out["attn_mag"] = attn_override.MultiHeadDotProductAttention(
         num_heads=self.num_heads,
         kernel_init=nn.initializers.xavier_uniform(),
         deterministic=deterministic,
@@ -129,7 +129,7 @@ class Encoder1DBlock(nn.Module):
     y = nn.with_logical_constraint(y, ("act_batch", "act_len", "act_emb"))
     y = nn.Dropout(rate=self.dropout)(y, deterministic)
     x = out["+sa"] = x + y
-    out["before_mlp_mag"] = jnp.average(jnp.abs(x), axis=2) # take abs()
+    out["before_mlp_mag"] = jnp.average(jnp.abs(x), axis=2) # attention score + input (skip connections)
 
     y = nn.LayerNorm()(x)
     y = out["mlp"] = MlpBlock(
@@ -186,12 +186,9 @@ class Encoder(nn.Module):
             mlp_dim=self.mlp_dim, num_heads=self.num_heads,
             dropout=self.dropout)
         x, out[f"block{lyr:02d}"] = block_cur(x, deterministic)
-      out["attn_distribution"] = out["block00"]["attn_distribution"] # 1st layer attention probes
-      out["attn"] = out["block00"]["attn"] # 1st layer attention results
-      out["before_mlp"] = out["block00"]["before_mlp_mag"] # 1st layer attention results + embeddings from skip connections
-      out["query"] = out["block00"]["query"] # 1st layer attention probes
-      out["key"] = out["block00"]["key"] # 1st layer attention probes
-      out["value"] = out["block00"]["value"] # 1st layer attention probes
+        out[f"attn_weight_avg{lyr:02d}"] = out[f"block{lyr:02d}"]["attn_weight_avg"]
+        out[f"attn_mag{lyr:02d}"] = out[f"block{lyr:02d}"]["attn_mag"]
+        out[f"before_mlp{lyr:02d}"] = out[f"block{lyr:02d}"]["before_mlp_mag"]
       out["pre_ln"] = x  # Alias for last block, but without the number in it.
 
     return nn.LayerNorm(name="encoder_norm")(x), out
@@ -279,12 +276,10 @@ class _Model(nn.Module):
         name="Transformer")(
             x, deterministic=not train)
     encoded = out["encoded"] = x
-    out["attn_distribution"] = out["encoder"]["attn_distribution"]
-    out["attn"] = out["encoder"]["attn"]
-    out["before_mlp"] = out["encoder"]["before_mlp"]
-    out["query"] = out["encoder"]["query"]
-    out["key"] = out["encoder"]["key"]
-    out["value"] = out["encoder"]["value"]
+    # trim the values from empty input, direct output is ceil()ed to multiples of batch size
+    out["attn_weight_avg"] = jnp.stack([out["encoder"][f"attn_weight_avg{lyr:02d}"][0:n:] for lyr in range(self.depth)], axis=1)
+    out["attn_mag"] = jnp.stack([out["encoder"][f"attn_mag{lyr:02d}"][0:n:] for lyr in range(self.depth)], axis=1)
+    out["before_mlp"] = jnp.stack([out["encoder"][f"before_mlp{lyr:02d}"][0:n:] for lyr in range(self.depth)], axis=1)
 
     if self.pool_type == "map":
       x = out["head_input"] = MAPHead(
